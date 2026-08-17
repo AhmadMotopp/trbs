@@ -62,6 +62,7 @@ class Visualize:
         self.available_visuals = {
             "table": self._create_table,
             "barchart": self._create_barchart,
+            "piechart": self._create_piechart,
         }
         self.available_outputs = [
             "key_outputs",
@@ -73,6 +74,9 @@ class Visualize:
             "fixed_inputs",
             "decision_makers_options",
             "scenario_appreciations",
+            "theme_weight",
+            "scenario_weight",
+            "key_output_relative_weight",
         ]
         self.available_kwargs = [
             "scenario",
@@ -334,6 +338,15 @@ class Visualize:
         index = np.where(self.input_dict["key_outputs"] == dmo)[0][0]
         return self.input_dict["key_output_theme"][index]
 
+    def _get_theme_colors(self) -> dict:
+        """
+        This function maps each unique theme to a color, using a consistent order so that
+        the same theme always gets the same color across all charts.
+        :return: a dictionary mapping theme name to a color
+        """
+        unique_themes = list(dict.fromkeys(self.input_dict["key_output_theme"]))
+        return {theme: self.colors[i % len(self.colors)] for i, theme in enumerate(unique_themes)}
+
     def _create_barchart(self, key: str, **kwargs) -> None:
         """
         This function creates and shows a barchart for a given data key.
@@ -363,10 +376,7 @@ class Visualize:
         else:
             # Apply the function to the "weighted_appreciations" column and add as new column
             bar_data["themes"] = bar_data[key].apply(self.map_values)
-            # Create a dictionary to map themes to colors
-            unique_themes = bar_data["themes"].unique()
-            # give each decision makers options belonging to the same theme, the same color
-            theme_colors = {theme: self.colors[i % len(self.colors)] for i, theme in enumerate(unique_themes)}
+            theme_colors = self._get_theme_colors()
             # Map the colors to the themes
             bar_colors = bar_data["themes"].map(theme_colors)
             rest_cols = [col for col in bar_data.columns if col not in ["decision_makers_option", "value"]]
@@ -377,6 +387,86 @@ class Visualize:
                 patch.set_edgecolor("white")
                 patch.set_linewidth(1)
             self._graph_styler(axis, f"Values of {self._str_snake_case_to_text(key)}{name_str}", show_legend)
+
+        if "save" in kwargs:
+            plt.savefig("images" + "/figure_" + key + ".png", bbox_inches="tight")
+            plt.close()
+        else:
+            plt.show()
+
+    def _create_piechart(self, key: str, **kwargs) -> None:
+        """
+        This function creates and shows a piechart for a given weight key.
+        :param key: name of the weight to visualise ("theme_weight", "scenario_weight" or "key_output_relative_weight")
+        :return: a plotted piechart
+        """
+        show_legend = kwargs["show_legend"] if "show_legend" in kwargs else True
+
+        if key == "key_output_relative_weight":
+            labels = [
+                f"{key_output} (Theme: {theme})"
+                for key_output, theme in zip(self.input_dict["key_outputs"], self.input_dict["key_output_theme"])
+            ]
+            values = self.input_dict["key_output_relative_weight"]
+            colors = [self.colors[i % len(self.colors)] for i in range(len(self.input_dict["key_outputs"]))]
+        elif key == "theme_weight":
+            theme_weight_by_name = dict(zip(self.input_dict["themes"], self.input_dict["theme_weight"]))
+            theme_totals = {}
+            for theme, relative_weight in zip(
+                    self.input_dict["key_output_theme"], self.input_dict["key_output_relative_weight"]
+            ):
+                theme_totals[theme] = theme_totals.get(theme, 0) + relative_weight
+
+            values = [
+                (relative_weight / theme_totals[theme]) * theme_weight_by_name[theme]
+                for theme, relative_weight in zip(
+                    self.input_dict["key_output_theme"], self.input_dict["key_output_relative_weight"]
+                )
+            ]
+            theme_colors = self._get_theme_colors()
+            colors = [theme_colors[theme] for theme in self.input_dict["key_output_theme"]]
+        elif key == "scenario_weight":
+            labels = self.input_dict["scenarios"]
+            values = self.input_dict["scenario_weight"]
+            colors = self.colors_scen[: len(labels)]
+        else:
+            raise VisualizationError(f"'{key}' is not a valid option for a piechart")
+
+        _figure, axis = plt.subplots(figsize=(6, 6))
+        wedges, _slice_labels, _percentage_labels = axis.pie(
+            values, colors=colors, autopct="%1.1f%%", wedgeprops={"edgecolor": "white", "linewidth": 2}
+        )
+        axis.set_title(f"Values of {self._str_snake_case_to_text(key)}", color="#777777", fontsize=12)
+
+        if key == "theme_weight":
+            total_theme_weight = sum(self.input_dict["theme_weight"])
+            theme_groups = {}
+            for wedge, theme in zip(wedges, self.input_dict["key_output_theme"]):
+                theme_groups.setdefault(theme, []).append(wedge)
+
+            for theme, group_wedges in theme_groups.items():
+                angles = [(w.theta1 + w.theta2) / 2 for w in group_wedges]
+                mid_angle = sum(angles) / len(angles)
+                x = 1.2 * np.cos(np.deg2rad(mid_angle))
+                y = 1.2 * np.sin(np.deg2rad(mid_angle))
+                theme_pct = theme_weight_by_name[theme] / total_theme_weight * 100
+                axis.annotate(
+                    f"{theme}: {theme_pct:.1f}%", xy=(x, y), ha="center", va="center", fontsize=11, fontweight="bold"
+                )
+        else:
+            axis.legend(
+                wedges,
+                labels,
+                loc="upper center",
+                bbox_to_anchor=(0.5, 0.02),
+                ncol=1,
+                frameon=False,
+                fontsize=10,
+                handlelength=1,
+                handleheight=1,
+            )
+            if not show_legend:
+                axis.legend_ = None
 
         if "save" in kwargs:
             plt.savefig("images" + "/figure_" + key + ".png", bbox_inches="tight")
