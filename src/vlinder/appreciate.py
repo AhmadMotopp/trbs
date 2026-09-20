@@ -14,6 +14,7 @@ class Appreciate:
     def __init__(self, input_dict, output_dict):
         self.input_dict = input_dict
         self.output_dict = output_dict
+        self.appreciation_functions = {}
         self.start_and_end_points = self._get_start_and_end_points()
 
     # pylint: disable=too-many-locals
@@ -134,7 +135,7 @@ class Appreciate:
         :param n_points: number of grid points to generate per key output
         :return: None as results are stored within the output_dict
         """
-        self.output_dict["appreciation_functions"] = {
+        self.appreciation_functions = {
             key_output: self._appreciate_grid_single_key_output(key_output, n_points)
             for key_output in self.input_dict["key_outputs"]
         }

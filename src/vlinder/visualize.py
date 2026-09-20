@@ -36,11 +36,12 @@ class VisualizationError(Exception):
 class Visualize:
     """This class deals with the creation of all graphs and tables"""
 
-    def __init__(self, input_dict, outcomes, options):
+    def __init__(self, input_dict, outcomes, options, appreciation_functions=None):
         # for visualization purposes two digits is sufficient
         self.input_dict = input_dict
         self.outcomes = round_all_dict_values(outcomes)
         self.options = options
+        self.appreciation_functions = appreciation_functions or {}
         self.colors = [
             "#295477",
             "#F3DD8C",
