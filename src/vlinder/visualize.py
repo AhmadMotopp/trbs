@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
+from matplotlib.lines import Line2D
 from pandas.io.formats.style import Styler
 from pyvis.network import Network
 from selenium import webdriver
@@ -41,6 +42,7 @@ class VisualizationError(Exception):
         return f"Visualization Error: {self.message}"
 
 
+# pylint: disable=too-many-instance-attributes
 class Visualize:
     """This class deals with the creation of all graphs and tables"""
 
@@ -79,6 +81,7 @@ class Visualize:
         # for visualization purposes two digits is sufficient
         self.input_dict = input_dict
         self.outcomes = round_all_dict_values(outcomes)
+        self.raw_outcomes = outcomes
         self.options = options
         self.appreciation_functions = appreciation_functions or {}
         self.colors = [
@@ -617,6 +620,58 @@ class Visualize:
         else:
             plt.show()
 
+    def _add_scenario_dmo_points(self, axis, key: str) -> None:
+        """
+        This function adds a point to the appreciation graph for every combination of scenario and decision makers
+        option. The x-value is the outcome of the key output, the y-value is its appreciation. The color shows the
+        decision makers option and the marker shape shows the scenario.
+        :param axis: the matplotlib axis that already contains the appreciation function
+        :param key: name of the key output that is plotted
+        :return: None, the points and the legend are added to the given axis
+        """
+        markers = ["o", "s", "^", "D", "v", "P", "X", "*"]
+        scenarios = list(self.input_dict["scenarios"])
+        dmos = list(self.input_dict["decision_makers_options"])
+
+        for scenario_index, scenario in enumerate(scenarios):
+            for dmo_index, dmo in enumerate(dmos):
+                values = self.raw_outcomes[scenario][dmo]
+                axis.scatter(
+                    values["key_outputs"][key],
+                    values["appreciations"][key],
+                    color=self.colors[(dmo_index + 2) % len(self.colors)],
+                    marker=markers[scenario_index % len(markers)],
+                    s=60,
+                    edgecolors="white",
+                    zorder=3,
+                )
+
+        # build the legend by hand: colors for the options, grey shapes for the scenarios
+        legend_items = [Line2D([0], [0], color=self.colors[0], label="appreciation function")]
+        for dmo_index, dmo in enumerate(dmos):
+            legend_items.append(
+                Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    linestyle="",
+                    color=self.colors[(dmo_index + 2) % len(self.colors)],
+                    label=dmo,
+                )
+            )
+        for scenario_index, scenario in enumerate(scenarios):
+            legend_items.append(
+                Line2D(
+                    [0],
+                    [0],
+                    marker=markers[scenario_index % len(markers)],
+                    linestyle="",
+                    color="#555555",
+                    label=scenario,
+                )
+            )
+        axis.legend(handles=legend_items, loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=4, frameon=False)
+
     def _create_appreciation_graph(self, key: str, **kwargs) -> None:
         """
         This function creates and shows a line chart of the appreciation function of a single key output: for every
@@ -660,6 +715,7 @@ class Visualize:
                 textcoords="offset points",
                 fontsize=9,
             )
+        self._add_scenario_dmo_points(axis, key)
 
         if "save" in kwargs:
             plt.savefig("images" + "/figure_appreciation_" + key + ".png", bbox_inches="tight")
